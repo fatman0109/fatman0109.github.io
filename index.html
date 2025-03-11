@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>场馆预约生成器</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        body {
+            background: #f5f5f5;
+            padding: 15px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+
+        select, .date-select {
+            width: 100%;
+            height: 48px;
+            padding: 0 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            -webkit-appearance: none;
+            background: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") no-repeat right 15px center/12px;
+        }
+
+        .time-slots {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .time-item {
+            position: relative;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .time-item input {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .time-item input:checked + span {
+            background: #007AFF;
+            color: white;
+            border-color: #007AFF;
+        }
+
+        .time-item span {
+            display: block;
+            font-size: 14px;
+            transition: all 0.2s;
+            border-radius: 6px;
+            padding: 8px;
+        }
+
+        #result {
+            margin-top: 25px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .result-link {
+            color: #007AFF;
+            text-decoration: none;
+            word-break: break-all;
+            font-size: 14px;
+            display: block;
+            padding: 12px;
+            border-radius: 8px;
+            background: white;
+            border: 1px solid #ddd;
+        }
+
+        .tip {
+            color: #666;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="form-group">
+            <label>选择场次</label>
+            <select id="session">
+                <option value="">请选择场次（1-12）</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>选择日期</label>
+            <select id="date" class="date-select"></select>
+        </div>
+
+        <div class="form-group">
+            <label>选择时间段</label>
+            <div class="time-slots" id="timeSlots"></div>
+            <div class="tip">可单选或双选（最多2个时段）</div>
+        </div>
+
+        <div id="result">
+            <a id="resultLink" class="result-link" href="#" target="_blank">请完成所有选择</a>
+        </div>
+    </div>
+
+<script>
+// 移动端优化版逻辑
+document.addEventListener('DOMContentLoaded', () => {
+    // 初始化场次（1-12）
+    const sessionSelect = document.getElementById('session');
+    for (let i = 1; i <= 12; i++) {
+        const option = new Option(`场次 ${i}（ID:${219+i}）`, i);
+        sessionSelect.add(option);
+    }
+
+    // 初始化日期（今天/明天/后天）
+    const initDates = () => {
+        const dateSelect = document.getElementById('date');
+        const options = [];
+        const days = ['今天', '明天', '后天'];
+        
+        days.forEach((day, index) => {
+            const date = new Date();
+            date.setDate(date.getDate() + index);
+            const dateStr = date.toISOString().split('T')[0];
+            options.push({
+                label: `${day}（${dateStr}）`,
+                value: dateStr
+            });
+        });
+
+        dateSelect.innerHTML = options.map(opt => 
+            `<option value="${opt.value}">${opt.label}</option>`
+        ).join('');
+    };
+
+    // 初始化时间段（8-21点）
+    const initTimeSlots = () => {
+        const container = document.getElementById('timeSlots');
+        let html = '';
+        
+        for (let hour = 8; hour <= 21; hour++) {
+            const value = `${hour}-${hour+1}`;
+            html += `
+                <label class="time-item">
+                    <input type="checkbox" value="${value}">
+                    <span>${hour}:00-${hour+1}:00</span>
+                </label>
+            `;
+        }
+        container.innerHTML = html;
+    };
+
+    // 选择限制逻辑
+    document.getElementById('timeSlots').addEventListener('change', (e) => {
+        if (e.target.type === 'checkbox') {
+            const checked = document.querySelectorAll('#timeSlots input:checked');
+            if (checked.length > 2) {
+                e.target.checked = false;
+                showToast('最多选择2个时段');
+            }
+        }
+    });
+
+    // 生成链接逻辑
+    const generateLink = () => {
+        const session = sessionSelect.value;
+        const date = document.getElementById('date').value;
+        const timeValues = Array.from(
+            document.querySelectorAll('#timeSlots input:checked')
+        ).map(input => input.value);
+
+        const link = document.getElementById('resultLink');
+        
+        if (session && date && timeValues.length > 0) {
+            // 参数转换
+            const sessionId = 219 + parseInt(session);
+            const timeIds = timeValues.map(t => 
+                328228 + parseInt(t.split('-')[0]) - 8
+            );
+
+            // 构建URL
+            const scene = encodeURIComponent(encodeURIComponent(JSON.stringify([{
+                day: date,
+                fields: { [sessionId]: timeIds }
+            }])));
+
+            const url = `http://gym.dazuiwl.cn/h5/#/pages/confirmOrder/confirmOrder?ordertype=makeappointment&sport_events_id=51&scene=${scene}`;
+            link.href = url;
+            link.textContent = '点击跳转预约页面';
+            link.style.color = '#007AFF';
+        } else {
+            link.href = '#';
+            link.textContent = '请完成所有选择';
+            link.style.color = '#999';
+        }
+    };
+
+    // 监听所有输入变化
+    [sessionSelect, document.getElementById('date')].forEach(el => {
+        el.addEventListener('change', generateLink);
+    });
+    document.getElementById('timeSlots').addEventListener('change', generateLink);
+
+    // 工具函数
+    const showToast = (msg) => {
+        const toast = document.createElement('div');
+        toast.textContent = msg;
+        toast.style = `
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 14px;
+            z-index: 100;
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2000);
+    };
+
+    // 初始化
+    initDates();
+    initTimeSlots();
+});
+</script>
+</body>
+</html>
