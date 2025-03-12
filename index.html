@@ -106,10 +106,45 @@
             font-size: 13px;
             margin-top: 8px;
         }
+
+        /* 新增工具栏样式 */
+        .toolbar {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .status-check {
+            color: #007AFF;
+            text-decoration: none;
+            font-size: 14px;
+            padding: 8px 12px;
+            border: 1px solid #007AFF;
+            border-radius: 6px;
+        }
+
+        .restore-btn {
+            background: #f0f0f0;
+            color: #666;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- 新增工具栏 -->
+        <div class="toolbar">
+            <a href="http://gym.dazuiwl.cn/h5/#/pages/selectSession/selectSession?id=51&index=2&staff=undefined&nonstaff=undefined&half=0&order_group_ids=2,3,4&ordermaxhour=2&used_group_ids=&usedhour=0&usedfield=1" 
+               class="status-check" 
+               target="_blank">
+                检测登录状态
+            </a>
+            <button class="restore-btn" onclick="clearStorage()">清除记录</button>
+        </div>
+
         <div class="form-group">
             <label>选择场次</label>
             <select id="session">
@@ -135,6 +170,9 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    // 存储键名
+    const STORAGE_KEY = 'GYM_BOOKING_DATA';
+    
     // 初始化场次（1-12）
     const sessionSelect = document.getElementById('session');
     for (let i = 1; i <= 12; i++) {
@@ -144,10 +182,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 初始化日期选择器
     const dateInput = document.getElementById('date');
-    // 设置最小日期为今天
     const today = new Date();
     dateInput.min = today.toISOString().split('T')[0];
-    // 设置默认值为今天
     dateInput.valueAsDate = today;
 
     // 初始化时间段（8-21点）
@@ -167,7 +203,74 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = html;
     };
 
-    // 选择限制逻辑
+    // 加载已保存的数据
+    const loadSavedData = () => {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            try {
+                const data = JSON.parse(saved);
+                if (data.session) sessionSelect.value = data.session;
+                if (data.date) dateInput.value = data.date;
+                if (data.timeSlots) {
+                    document.querySelectorAll('#timeSlots input').forEach(input => {
+                        input.checked = data.timeSlots.includes(input.value);
+                    });
+                }
+            } catch (e) {
+                console.error('读取存储数据失败:', e);
+            }
+        }
+    };
+
+    // 保存数据
+    const saveData = () => {
+        const data = {
+            session: sessionSelect.value,
+            date: dateInput.value,
+            timeSlots: Array.from(document.querySelectorAll('#timeSlots input:checked'))
+                         .map(input => input.value)
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    };
+
+    // 清除存储
+    window.clearStorage = () => {
+        localStorage.removeItem(STORAGE_KEY);
+        location.reload();
+    };
+
+    // 生成链接逻辑
+    const generateLink = () => {
+        const session = sessionSelect.value;
+        const date = dateInput.value;
+        const timeValues = Array.from(document.querySelectorAll('#timeSlots input:checked'))
+                             .map(input => input.value);
+
+        const link = document.getElementById('resultLink');
+        
+        if (session && date && timeValues.length > 0) {
+            const sessionId = 219 + parseInt(session);
+            const timeIds = timeValues.map(t => 
+                328228 + parseInt(t.split('-')[0]) - 8
+            );
+
+            const scene = encodeURIComponent(encodeURIComponent(JSON.stringify([{
+                day: date,
+                fields: { [sessionId]: timeIds }
+            }])));
+
+            link.href = `http://gym.dazuiwl.cn/h5/#/pages/confirmOrder/confirmOrder?ordertype=makeappointment&sport_events_id=51&scene=${scene}`;
+            link.textContent = '点击跳转预约页面';
+            link.style.color = '#007AFF';
+        } else {
+            link.href = '#';
+            link.textContent = '请完成所有选择';
+            link.style.color = '#999';
+        }
+        saveData();
+    };
+
+    // 事件监听
     document.getElementById('timeSlots').addEventListener('change', (e) => {
         if (e.target.type === 'checkbox') {
             const checked = document.querySelectorAll('#timeSlots input:checked');
@@ -176,71 +279,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast('最多选择2个时段');
             }
         }
+        generateLink();
     });
 
-    // 生成链接逻辑
-    const generateLink = () => {
-        const session = sessionSelect.value;
-        const date = dateInput.value;
-        const timeValues = Array.from(
-            document.querySelectorAll('#timeSlots input:checked')
-        ).map(input => input.value);
-
-        const link = document.getElementById('resultLink');
-        
-        if (session && date && timeValues.length > 0) {
-            // 参数转换
-            const sessionId = 219 + parseInt(session);
-            const timeIds = timeValues.map(t => 
-                328228 + parseInt(t.split('-')[0]) - 8
-            );
-
-            // 构建URL
-            const scene = encodeURIComponent(encodeURIComponent(JSON.stringify([{
-                day: date,
-                fields: { [sessionId]: timeIds }
-            }])));
-
-            const url = `http://gym.dazuiwl.cn/h5/#/pages/confirmOrder/confirmOrder?ordertype=makeappointment&sport_events_id=51&scene=${scene}`;
-            link.href = url;
-            link.textContent = '点击跳转预约页面';
-            link.style.color = '#007AFF';
-        } else {
-            link.href = '#';
-            link.textContent = '请完成所有选择';
-            link.style.color = '#999';
-        }
-    };
-
-    // 监听所有输入变化
     [sessionSelect, dateInput].forEach(el => {
         el.addEventListener('change', generateLink);
     });
-    document.getElementById('timeSlots').addEventListener('change', generateLink);
-
-    // 工具函数
-    const showToast = (msg) => {
-        const toast = document.createElement('div');
-        toast.textContent = msg;
-        toast.style.cssText = `
-            position: fixed;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0,0,0,0.8);
-            color: white;
-            padding: 12px 24px;
-            border-radius: 25px;
-            font-size: 14px;
-            z-index: 100;
-        `;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 2000);
-    };
 
     // 初始化
     initTimeSlots();
+    loadSavedData();
+    generateLink();
 });
+
+// 提示工具
+const showToast = (msg) => {
+    const toast = document.createElement('div');
+    toast.textContent = msg;
+    toast.style.cssText = `
+        position: fixed;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0,0,0,0.8);
+        color: white;
+        padding: 12px 24px;
+        border-radius: 25px;
+        font-size: 14px;
+        z-index: 100;
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2000);
+};
 </script>
 </body>
 </html>
